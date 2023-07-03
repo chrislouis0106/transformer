@@ -1,5 +1,4 @@
-# Table of Contents
-- 源码添加注释，更好理解计算过程，方便Debug。
+# 内容 : 源码添加注释，更好理解计算过程，方便Debug。
 - [Table of Contents](#table-of-contents)
 - [Transformer - Attention is all you need - Pytorch Implementation](#transformer---attention-is-all-you-need---pytorch-implementation)
 - [Models](#models)
