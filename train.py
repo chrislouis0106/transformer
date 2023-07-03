@@ -41,8 +41,9 @@ def validate_epoch(model, valid_loader, epoch, n_epochs, source_pad_id, target_p
     valid_loss = sum(total_loss) / len(total_loss)
     return valid_loss, total_loss
 
-
+# 每个epoch的计算过程；
 def train_epoch(model, train_loader, optim, epoch, n_epochs, source_pad_id, target_pad_id, device):
+    # 初始训练
     model.train()
     total_loss = []
     bar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Training epoch {epoch+1}/{n_epochs}")
@@ -63,14 +64,29 @@ def train_epoch(model, train_loader, optim, epoch, n_epochs, source_pad_id, targ
     return train_loss, total_loss
 
 
+'''
+    train(model=model,
+        train_loader=train_loader,
+        valid_loader=valid_loader,
+        optim=optim,
+        n_epochs=configs["n_epochs"],
+        source_pad_id=source_tokenizer.pad_token_id,
+        target_pad_id=target_tokenizer.pad_token_id,
+        device=device,
+        model_path=configs["model_path"],
+        early_stopping=configs["early_stopping"]
+    )
+'''
 def train(model, train_loader, valid_loader, optim, n_epochs, source_pad_id, target_pad_id, device, model_path, early_stopping):
+    # 设置日志文件
     log_dir = "./logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-
+    # 设置初始值；
     best_val_loss = np.Inf
     best_epoch = 1
     count_early_stop = 0
+    # 设置日志文件内容
     log = {"train_loss": [], "valid_loss": [], "train_batch_loss": [], "valid_batch_loss": []}
     for epoch in range(n_epochs):
         train_loss, train_losses = train_epoch(
@@ -197,8 +213,9 @@ def main():
         batch_size=configs["batch_size"],
         shuffle=False
     )
-
+    # 模型to cuda config 是一个字典；
     model.to(configs["device"])
+    # 调用train 函数；
     train(model=model,
         train_loader=train_loader,
         valid_loader=valid_loader,
