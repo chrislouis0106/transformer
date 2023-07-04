@@ -43,21 +43,29 @@ def validate_epoch(model, valid_loader, epoch, n_epochs, source_pad_id, target_p
 
 # 每个epoch的计算过程；
 def train_epoch(model, train_loader, optim, epoch, n_epochs, source_pad_id, target_pad_id, device):
-    # 初始训练
+    # 初始训练 train()指示器； 损失函数列表统计； 进度条与描述信息以及枚举训练加载器
     model.train()
     total_loss = []
     bar = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Training epoch {epoch+1}/{n_epochs}")
     for i, batch in bar:
+        # 遍历 bar 的 内容与 index； 把数据转移到device；
         source, target = batch["source_ids"].to(device), batch["target_ids"].to(device)
+        # 从target输入中移除了最后一个token；常用于训练生成任务；使得模型学习生成序列基于输入文本；
         target_input = target[:, :-1]
+        # 对source 和 target mask data ；得到的掩码数据为 与pad_id 不相等的地方赋值为1； target的处理也是一样；也就是将真实的数据标地位1
         source_mask, target_mask = model.make_source_mask(source, source_pad_id), model.make_target_mask(target_input)
+        # 数据输入model
         preds = model(source, target_input, source_mask, target_mask)
+        # 梯度清零；
         optim.zero_grad()
+        # from第二个token直到最后一个token；view(-1)结合所有的token到一个序列
         gold = target[:, 1:].contiguous().view(-1)
+        # 计算预测与损失的loss，cross_entropy 的 ignore_index 参数；
         loss = F.cross_entropy(preds.view(-1, preds.size(-1)), gold, ignore_index=target_pad_id)
         loss.backward()
         optim.step()
         total_loss.append(loss.item())
+        # 检索最近的损失值从，
         bar.set_postfix(loss=total_loss[-1])
     
     train_loss = sum(total_loss) / len(total_loss)
@@ -89,6 +97,7 @@ def train(model, train_loader, valid_loader, optim, n_epochs, source_pad_id, tar
     # 设置日志文件内容
     log = {"train_loss": [], "valid_loss": [], "train_batch_loss": [], "valid_batch_loss": []}
     for epoch in range(n_epochs):
+        # 每个epoch 训练 and  验证；
         train_loss, train_losses = train_epoch(
             model=model,
             train_loader=train_loader,
@@ -108,7 +117,7 @@ def train(model, train_loader, valid_loader, optim, n_epochs, source_pad_id, tar
             target_pad_id=target_pad_id,
             device=device
         )
-
+        # 根据验证精度保存最好的摸i选哪个
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
             best_epoch = epoch + 1
@@ -117,13 +126,15 @@ def train(model, train_loader, valid_loader, optim, n_epochs, source_pad_id, tar
             print("---- Detect improment and save the best model ----")
             count_early_stop = 0
         else:
+            # 达到early stop 则停止 训练；
             count_early_stop += 1
             if count_early_stop >= early_stopping:
                 print("---- Early stopping ----")
                 break
-
+        # 每个epoch后都清楚缓存；会将已分配但未使用的GPU显存释放，并将其标记为空闲状态，以便其他操作可以使用
         torch.cuda.empty_cache()
 
+        # 记录到日志文件并打印；
         log["train_loss"].append(train_loss)
         log["valid_loss"].append(valid_loss)
         log["train_batch_loss"].extend(train_losses)

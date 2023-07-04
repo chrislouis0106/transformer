@@ -11,7 +11,9 @@ def main():
     print("--- English input sentence:", sentence)
     print("--- Translating...")
     device = torch.device(configs["device"])
+    # 函数加载预训练模型；
     model, source_tokenizer, target_tokenizer = load_model_tokenizer(configs)
+    # 输入翻译的句子，定打印消耗的秒数；
     st = time.time()
     trans_sen = translate(
         model=model, 

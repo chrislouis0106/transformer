@@ -5,11 +5,13 @@ import math
 from torch.autograd import Variable
 
 # Embedding the input sequence
+# 把词典与dim声明，得到字典表的向量；
 class Embedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         super(Embedding, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
 
+    # 其 该类的forward 为取值nn.Emebedding的索引；
     def forward(self, x):
         return self.embedding(x)
 
@@ -52,21 +54,24 @@ class SelfAttention(nn.Module):
         自定义注意力；
     '''
 
+    # 初始化只包括一个dropout层；其他没了；
     def __init__(self, dropout=0.1):
         super(SelfAttention, self).__init__()
         self.dropout = nn.Dropout(dropout)
 
-    # 如何使用 forward的计算
+    # 如何使用 forward的计算； 其forward中传入的q k v 都是同一个值；
     def forward(self, query, key, value, mask=None):
         key_dim = key.size(-1)
+        # 计算q / dim(k) * K 的注意力值；
         attn = torch.matmul(query / np.sqrt(key_dim), key.transpose(2, 3))
         if mask is not None:
             mask = mask.unsqueeze(1)
             # mask_fill 将mask中为0的元素，对应attn的张量元素替换为 -1e9.  attn张量中mask为0的位置的元素替换为-1e9
-            # 为了正确执行遮蔽操作，mask的形状必须与attn的形状相匹配，
+            # 为了正确执行遮蔽操作，mask的形状必须与attn的形状相匹配，根据mask进行填充；
             attn = attn.masked_fill(mask == 0, -1e9)
         # 在对attn 归一化； 执行droput 后与value 进行乘机；
         attn = self.dropout(torch.softmax(attn, dim=-1))
+        # 在记性正常的矩阵乘机；
         output = torch.matmul(attn, value)
 
         return output
@@ -87,16 +92,18 @@ class MultiHeadAttention(nn.Module):
         self.query_projection = nn.Linear(embedding_dim, embedding_dim)
         self.key_projection = nn.Linear(embedding_dim, embedding_dim)
         self.value_projection = nn.Linear(embedding_dim, embedding_dim)
+        # dropout 和 输出
         self.dropout = nn.Dropout(dropout)
         self.out = nn.Linear(embedding_dim, embedding_dim)
 
     def forward(self, query, key, value, mask=None):
         # Apply the linear projections
         batch_size = query.size(0)
+        # 先将 q k v 通过一个W 进行映射，这里的W不共享；
         query = self.query_projection(query)
         key = self.key_projection(key)
         value = self.value_projection(value)
-        # Reshape the input
+        # Reshape the input；将原始的q k v 分成多个头，每个头 输入多头注意力；
         query = query.view(batch_size, -1, self.num_heads, self.dim_per_head).transpose(1, 2)
         key = key.view(batch_size, -1, self.num_heads, self.dim_per_head).transpose(1, 2)
         value = value.view(batch_size, -1, self.num_heads, self.dim_per_head).transpose(1, 2)
@@ -155,15 +162,19 @@ class EncoderLayer(nn.Module):
 
 # Transformer decoder layer
 class DecoderLayer(nn.Module):
+    #初始化解码器的一层；
     def __init__(self, embedding_dim, num_heads, ff_dim=2048, dropout=0.1):
         super(DecoderLayer, self).__init__()
+        # 解码器的自注意与 编码器的自注意力
         self.self_attention = MultiHeadAttention(embedding_dim, num_heads, dropout)
         self.encoder_attention = MultiHeadAttention(embedding_dim, num_heads, dropout)
+        # 放在 sequential中的基本的网络层；
         self.feed_forward = nn.Sequential(
             nn.Linear(embedding_dim, ff_dim),
             nn.ReLU(),
             nn.Linear(ff_dim, embedding_dim)
         )
+        # 三个dp 和 三个 norm
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
@@ -171,6 +182,9 @@ class DecoderLayer(nn.Module):
         self.norm2 = Norm(embedding_dim)
         self.norm3 = Norm(embedding_dim)
 
+    # 先norm 在输入注意力 + dp -> 加上初始的编码器的部分；
+    # 在norm 在编码器的注意力 + 记忆信息 + 记忆信息 + q（解码器的输出）
+    # 第三次：norm + 前馈网络；这里只是解码器的一层；即每一层都整合了编码器的信息 q ；
     def forward(self, x, memory, source_mask, target_mask):
         x2 = self.norm1(x)
         x = x + self.dropout1(self.self_attention(x2, x2, x2, target_mask))
@@ -222,6 +236,10 @@ class Decoder(nn.Module):
         self.num_layers = num_layers
         self.num_heads = num_heads
         self.embedding_dim = embedding_dim
+        # nn.ModuleList创建了一个由多个EncoderLayer组成的列表。
+        # nn.Modulelist 是torch的容器类，用于存储和管理神经网络模块；
+        # 创建一个长度为num_layers的nn.ModuleList对象，每个对象都是encoderlayer的实例，实例共享相同的权重与参数；
+        # 有意义的是每个层的解码器结构都是一样的；
         self.layers = nn.ModuleList([DecoderLayer(embedding_dim, num_heads, 2048, dropout) for _ in range(num_layers)])
         self.norm = Norm(embedding_dim)
         self.position_embedding = PositionalEncoder(embedding_dim, max_seq_len, dropout)
@@ -231,7 +249,7 @@ class Decoder(nn.Module):
         x = self.embedding(target)
         # Add the position embeddings
         x = self.position_embedding(x)
-        # Propagate through the layers
+        # Propagate through the layers 在每个层进行传播；
         for layer in self.layers:
             x = layer(x, memory, source_mask, target_mask)
         # Normalize
@@ -278,11 +296,16 @@ class Transformer(nn.Module):
         output = self.dropout(output)
         output = self.final_linear(output)
         return output
-    
+
+    # 和pad id 不相等的地方是 真实数据 对应保存一个mask 矩阵；
     def make_source_mask(self, source_ids, source_pad_id):
         return (source_ids != source_pad_id).unsqueeze(-2)
 
+    #
     def make_target_mask(self, target_ids):
         batch_size, len_target = target_ids.size()
+        # 对target 数据；
+        # 用于遮盖未来标记的掩码：subsequent_mask的作用是在解码过程中，防止模型在生成每个目标标记时能够看到后续的标记信息
+        # 这样模型就可以知道当前的序列来预测接下来的序列；掩码来确保模型只能利用已生成的部分信息进行预测，避免利用未来信息；
         subsequent_mask = (1 - torch.triu(torch.ones((1, len_target, len_target), device=target_ids.device), diagonal=1)).bool()
         return subsequent_mask
